@@ -1,0 +1,435 @@
+/* 橫向浮動交易面板 */
+.trading-panel-horizontal {
+  position: fixed;
+  min-width: 900px;
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 標題列 - 可拖曳 */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #3e3e42;
+  cursor: move;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* 快速下單區 */
+.quick-order-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lot-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lot-input-group label {
+  font-size: 13px;
+  color: #888;
+}
+
+.lot-select {
+  background: #2d2d30;
+  color: #ffffff;
+  border: 1px solid #3e3e42;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lot-select:focus {
+  outline: none;
+  border-color: #0e639c;
+}
+
+.quick-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-btn.buy {
+  background: #16c784;
+  color: white;
+}
+
+.quick-btn.buy:hover {
+  background: #1ed896;
+}
+
+.quick-btn.sell {
+  background: #ea3943;
+  color: white;
+}
+
+.quick-btn.sell:hover {
+  background: #f54e57;
+}
+
+.current-price-display {
+  font-size: 13px;
+  color: #888;
+  padding-left: 12px;
+  border-left: 1px solid #3e3e42;
+}
+
+.current-price-display strong {
+  color: #4ec9b0;
+  font-size: 15px;
+  margin-left: 4px;
+}
+
+.panel-close-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.panel-close-btn:hover {
+  color: #ea3943;
+}
+
+/* 持倉表格容器 */
+.positions-table-container {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+/* 持倉表格 */
+.positions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.positions-table thead {
+  background: #1e1e1e;
+  position: sticky;
+  top: 0;
+}
+
+.positions-table th {
+  padding: 10px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #888;
+  border-bottom: 1px solid #3e3e42;
+  white-space: nowrap;
+}
+
+.positions-table td {
+  padding: 10px 8px;
+  color: #cccccc;
+  border-bottom: 1px solid #3e3e42;
+  white-space: nowrap;
+}
+
+.positions-table tbody tr:hover {
+  background: #2d2d30;
+}
+
+.positions-table tbody tr.buy {
+  border-left: 3px solid #16c784;
+}
+
+.positions-table tbody tr.sell {
+  border-left: 3px solid #ea3943;
+}
+
+.positions-table tbody tr.pending {
+  opacity: 0.8;
+  background: rgba(255, 193, 7, 0.05);
+}
+
+/* 空狀態 */
+.empty-row td {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+/* 狀態標籤 */
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.status-badge.open {
+  background: rgba(22, 199, 132, 0.2);
+  color: #16c784;
+}
+
+.status-badge.pending {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+/* 類別標籤 */
+.type-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.type-badge.buy {
+  background: rgba(22, 199, 132, 0.2);
+  color: #16c784;
+}
+
+.type-badge.sell {
+  background: rgba(234, 57, 67, 0.2);
+  color: #ea3943;
+}
+
+/* 可編輯欄位 */
+.editable-cell {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.editable-cell:hover {
+  background: rgba(14, 99, 156, 0.2);
+}
+
+.editable-value {
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.editable-cell:hover .editable-value {
+  background: rgba(14, 99, 156, 0.3);
+}
+
+.inline-edit-input {
+  width: 80px;
+  padding: 4px 6px;
+  background: #1e1e1e;
+  border: 1px solid #0e639c;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.inline-edit-input:focus {
+  outline: none;
+  border-color: #1177bb;
+}
+
+/* 價格欄位 */
+.price-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* 止損欄位 */
+.sl-cell .editable-value {
+  color: #ea3943;
+}
+
+/* 止盈欄位 */
+.tp-cell .editable-value {
+  color: #16c784;
+}
+
+/* 盈虧欄位 */
+.pnl-cell {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-cell.positive {
+  color: #16c784;
+}
+
+.pnl-cell.negative {
+  color: #ea3943;
+}
+
+/* 風險欄位 */
+.risk-cell {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-cell.negative {
+  color: #ff9800;
+}
+
+/* 時間欄位 */
+.time-cell {
+  color: #888;
+  font-size: 12px;
+}
+
+/* 操作欄位 */
+.action-cell {
+  min-width: 120px;
+}
+
+/* 平倉按鈕 */
+.close-pos-btn {
+  padding: 4px 12px;
+  background: #3e3e42;
+  border: none;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.close-pos-btn:hover {
+  background: #ea3943;
+}
+
+.close-pos-btn.cancel {
+  background: #3e3e42;
+}
+
+.close-pos-btn.cancel:hover {
+  background: #ff9800;
+}
+
+/* 部分平倉輸入組 */
+.close-input-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.close-lot-input {
+  width: 60px;
+  padding: 4px 6px;
+  background: #1e1e1e;
+  border: 1px solid #0e639c;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.close-lot-input:focus {
+  outline: none;
+  border-color: #1177bb;
+}
+
+.close-confirm-btn,
+.close-cancel-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.close-confirm-btn {
+  background: #16c784;
+  color: white;
+}
+
+.close-confirm-btn:hover {
+  background: #1ed896;
+}
+
+.close-cancel-btn {
+  background: #3e3e42;
+  color: #888;
+}
+
+.close-cancel-btn:hover {
+  background: #ea3943;
+  color: white;
+}
+
+/* 帳戶資訊 - 底部 */
+.account-footer {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 16px;
+  background: #1e1e1e;
+  border-top: 1px solid #3e3e42;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-item .label {
+  font-size: 12px;
+  color: #888;
+}
+
+.account-item .value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.account-item .value.positive {
+  color: #16c784;
+}
+
+.account-item .value.negative {
+  color: #ea3943;
+}
+
+/* 滾動條樣式 */
+.positions-table-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.positions-table-container::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.positions-table-container::-webkit-scrollbar-thumb {
+  background: #3e3e42;
+  border-radius: 3px;
+}
+
+.positions-table-container::-webkit-scrollbar-thumb:hover {
+  background: #4e4e52;
+}

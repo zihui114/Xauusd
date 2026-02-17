@@ -1,0 +1,176 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  font-size: 15px;
+}
+
+.timeframe-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.timeframe-btn {
+  background: transparent;
+  color: #ffffff;
+  border: 1px solid #3e3e42;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.timeframe-btn:hover {
+  background: #3e3e42;
+  color: #aaaaaa;
+}
+
+.timeframe-btn.active {
+  background: #f0b90b;
+  color: #000000;
+  border-color: #f0b90b;
+  font-weight: 700;
+  box-shadow: 0 0 6px rgba(240, 185, 11, 0.5);
+}
+
+.date-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-control label {
+  font-size: 15px;
+  color: #cccccc;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.date-input {
+  background: #1e1e1e;
+  color: #ffffff;
+  border: 1px solid #3e3e42;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  width: 140px;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: #0e639c;
+}
+
+.load-btn {
+  background: #6a9955;
+}
+
+.load-btn:hover:not(:disabled) {
+  background: #7cb668;
+}
+
+.control-divider {
+  width: 1px;
+  height: 18px;
+  background: #3e3e42;
+  margin: 0 3px;
+}
+
+.control-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: #0e639c;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.control-btn:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.control-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.control-btn .icon {
+  font-size: 15px;
+}
+
+.control-btn .label {
+  font-size: 15px;
+}
+
+.play-btn {
+  background: #16c784;
+}
+
+.play-btn:hover:not(:disabled) {
+  background: #1ed896;
+}
+
+.pause-btn {
+  background: #ea3943;
+}
+
+.pause-btn:hover:not(:disabled) {
+  background: #f54e57;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 4px;
+  border-left: 1px solid #3e3e42;
+}
+
+.speed-control label {
+  font-size: 15px;
+  color: #cccccc;
+}
+
+.speed-control select {
+  background: #1e1e1e;
+  color: #ffffff;
+  border: 1px solid #3e3e42;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.speed-control select:focus {
+  outline: none;
+  border-color: #0e639c;
+}
+
+/* 模擬模式按鈕 */
+.simulation-btn {
+  background: #3e3e42;
+}
+
+.simulation-btn:hover:not(:disabled) {
+  background: #4e4e52;
+}
+
+.simulation-btn.active {
+  background: #9c27b0;
+}
+
+.simulation-btn.active:hover:not(:disabled) {
+  background: #ab47bc;
+}

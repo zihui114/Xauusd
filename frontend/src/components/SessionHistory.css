@@ -1,0 +1,242 @@
+.session-history-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+
+.session-history-panel {
+  background: #fff;
+  width: 900px;
+  max-width: 90vw;
+  height: 600px;
+  max-height: 80vh;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-history-panel .panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.session-history-panel .panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.session-history-panel .panel-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.session-history-panel .panel-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 左側列表 */
+.sessions-list {
+  width: 300px;
+  border-right: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+}
+
+.sessions-list h3 {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #666;
+  border-bottom: 1px solid #eee;
+}
+
+.sessions-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sessions-list li {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sessions-list li:hover {
+  background: #f5f5f5;
+}
+
+.sessions-list li.selected {
+  background: #e3f2fd;
+}
+
+.sessions-list .session-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.sessions-list .session-meta {
+  font-size: 12px;
+  color: #888;
+  display: flex;
+  gap: 8px;
+}
+
+.sessions-list .session-actions {
+  margin-top: 8px;
+}
+
+.sessions-list .delete-btn {
+  background: #ffebee;
+  color: #c62828;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sessions-list .delete-btn:hover {
+  background: #ffcdd2;
+}
+
+.sessions-list .loading,
+.sessions-list .empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #888;
+}
+
+/* 右側詳細 */
+.session-detail {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.session-detail h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+}
+
+.session-detail h4 {
+  margin: 20px 0 12px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.session-detail .detail-info {
+  background: #f9f9f9;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.session-detail .info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.session-detail .info-row span:first-child {
+  color: #666;
+}
+
+.session-detail .no-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+}
+
+/* 統計網格 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.stat-item {
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.stat-value.positive {
+  color: #4CAF50;
+}
+
+.stat-value.negative {
+  color: #f44336;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* 交易明細表格 */
+.trades-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.trades-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.trades-list th,
+.trades-list td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.trades-list th {
+  background: #f5f5f5;
+  font-weight: 500;
+}
+
+.trades-list td.buy {
+  color: #4CAF50;
+}
+
+.trades-list td.sell {
+  color: #f44336;
+}
+
+.trades-list td.positive {
+  color: #4CAF50;
+}
+
+.trades-list td.negative {
+  color: #f44336;
+}

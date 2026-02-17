@@ -1,0 +1,49 @@
+.account-info {
+  background: #1e1e1e;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #3e3e42;
+}
+
+.account-info h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #cccccc;
+  margin: 0 0 12px 0;
+}
+
+.info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-item.highlight {
+  padding-top: 12px;
+  border-top: 1px solid #3e3e42;
+}
+
+.info-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.info-value {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-value.positive {
+  color: #16c784;
+}
+
+.info-value.negative {
+  color: #ea3943;
+}
