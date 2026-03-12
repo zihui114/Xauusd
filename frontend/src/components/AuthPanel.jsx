@@ -14,7 +14,6 @@ function AuthPanel({ onLogin }) {
     setError('');
     setLoading(true);
 
-    // 驗證
     if (!username || !password) {
       setError('請填寫帳號和密碼');
       setLoading(false);
@@ -28,36 +27,37 @@ function AuthPanel({ onLogin }) {
     }
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const response = await fetch(`http://localhost:5001${endpoint}`, {
+      if (!isLogin) {
+        // 先註冊
+        const regResponse = await fetch('http://localhost:5001/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const regResult = await regResponse.json();
+        if (regResult.status !== 'success') {
+          setError(regResult.message || '註冊失敗');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 登入
+      const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username, password })
       });
+      const loginResult = await loginResponse.json();
 
-      const result = await response.json();
-
-      if (result.status === 'success') {
-        if (!isLogin) {
-          // 註冊成功後自動登入
-          const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ username, password })
-          });
-          const loginResult = await loginResponse.json();
-          if (loginResult.status === 'success') {
-            onLogin(loginResult.user);
-          }
-        } else {
-          onLogin(result.user);
-        }
+      if (loginResult.status === 'success') {
+        localStorage.setItem('auth_token', loginResult.token);
+        onLogin(loginResult.user);
       } else {
-        setError(result.message || '操作失敗');
+        setError(loginResult.message || '登入失敗');
       }
     } catch (err) {
+      console.error('Login error:', err);
       setError('連線失敗，請確認後端是否啟動');
     }
 

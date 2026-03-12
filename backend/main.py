@@ -1,15 +1,17 @@
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas as pd
 from datetime import datetime
 import os
+import secrets
 from functools import wraps
 
 from database import db, User, ReplaySession, Trade
 
 app = Flask(__name__)
-app.secret_key = 'xauusd-replay-secret-key-2025'  # 生產環境請更換
-CORS(app, supports_credentials=True)
+app.secret_key = 'xauusd-replay-secret-key-2025'
+
+CORS(app, origins='*')
 
 # 資料庫配置
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'xauusd.db')
@@ -38,12 +40,24 @@ TIMEFRAMES = {
     '1M': 'XAU_1Month_data.csv',
 }
 
+# Token 儲存（記憶體，重啟後失效）
+active_tokens = {}
 
-# ========== 登入驗證裝飾器 ==========
+
+# ========== Token 驗證 ==========
+def get_user_id_from_token():
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        token = auth[7:]
+        return active_tokens.get(token)
+    return None
+
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
+        user_id = get_user_id_from_token()
+        if not user_id:
             return jsonify({'status': 'error', 'message': '請先登入'}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -52,7 +66,6 @@ def login_required(f):
 # ========== 用戶認證 API ==========
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    """用戶註冊"""
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
@@ -60,93 +73,72 @@ def register():
     if not username or not password:
         return jsonify({'status': 'error', 'message': '帳號和密碼不能為空'}), 400
 
-    if len(username) < 3:
-        return jsonify({'status': 'error', 'message': '帳號至少需要3個字元'}), 400
-
-    if len(password) < 6:
-        return jsonify({'status': 'error', 'message': '密碼至少需要6個字元'}), 400
-
-    # 檢查帳號是否已存在
     if User.query.filter_by(username=username).first():
         return jsonify({'status': 'error', 'message': '帳號已存在'}), 400
 
-    # 創建新用戶
     user = User(username=username)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({
-        'status': 'success',
-        'message': '註冊成功',
-        'user': user.to_dict()
-    })
+    return jsonify({'status': 'success', 'message': '註冊成功', 'user': user.to_dict()})
 
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    """用戶登入"""
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
 
     user = User.query.filter_by(username=username).first()
-
     if not user or not user.check_password(password):
         return jsonify({'status': 'error', 'message': '帳號或密碼錯誤'}), 401
 
-    session['user_id'] = user.id
-    return jsonify({
-        'status': 'success',
-        'message': '登入成功',
-        'user': user.to_dict()
-    })
+    token = secrets.token_hex(32)
+    active_tokens[token] = user.id
+
+    return jsonify({'status': 'success', 'message': '登入成功', 'user': user.to_dict(), 'token': token})
 
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
-    """用戶登出"""
-    session.pop('user_id', None)
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        token = auth[7:]
+        active_tokens.pop(token, None)
     return jsonify({'status': 'success', 'message': '已登出'})
 
 
 @app.route('/api/auth/me', methods=['GET'])
 def get_current_user():
-    """取得當前登入用戶"""
-    if 'user_id' not in session:
+    user_id = get_user_id_from_token()
+    if not user_id:
         return jsonify({'status': 'error', 'message': '未登入'}), 401
 
-    user = User.query.get(session['user_id'])
+    user = User.query.get(user_id)
     if not user:
-        session.pop('user_id', None)
         return jsonify({'status': 'error', 'message': '用戶不存在'}), 401
 
-    return jsonify({
-        'status': 'success',
-        'user': user.to_dict()
-    })
+    return jsonify({'status': 'success', 'user': user.to_dict()})
 
 
 # ========== 復盤記錄 API ==========
 @app.route('/api/sessions', methods=['GET'])
 @login_required
 def get_sessions():
-    """取得用戶的所有復盤記錄"""
-    sessions = ReplaySession.query.filter_by(user_id=session['user_id']).order_by(ReplaySession.updated_at.desc()).all()
-    return jsonify({
-        'status': 'success',
-        'sessions': [s.to_dict() for s in sessions]
-    })
+    user_id = get_user_id_from_token()
+    sessions = ReplaySession.query.filter_by(user_id=user_id).order_by(ReplaySession.updated_at.desc()).all()
+    return jsonify({'status': 'success', 'sessions': [s.to_dict() for s in sessions]})
 
 
 @app.route('/api/sessions', methods=['POST'])
 @login_required
 def create_session():
-    """創建新的復盤記錄"""
+    user_id = get_user_id_from_token()
     data = request.json
 
     new_session = ReplaySession(
-        user_id=session['user_id'],
+        user_id=user_id,
         name=data.get('name', f"復盤 {datetime.now().strftime('%Y-%m-%d %H:%M')}"),
         start_date=data.get('start_date', '2025-12-01'),
         timeframe=data.get('timeframe', '1h'),
@@ -155,17 +147,14 @@ def create_session():
     db.session.add(new_session)
     db.session.commit()
 
-    return jsonify({
-        'status': 'success',
-        'session': new_session.to_dict()
-    })
+    return jsonify({'status': 'success', 'session': new_session.to_dict()})
 
 
 @app.route('/api/sessions/<int:session_id>', methods=['GET'])
 @login_required
 def get_session(session_id):
-    """取得單一復盤記錄"""
-    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=session['user_id']).first()
+    user_id = get_user_id_from_token()
+    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=user_id).first()
     if not replay_session:
         return jsonify({'status': 'error', 'message': '記錄不存在'}), 404
 
@@ -179,8 +168,8 @@ def get_session(session_id):
 @app.route('/api/sessions/<int:session_id>', methods=['PUT'])
 @login_required
 def update_session(session_id):
-    """更新復盤記錄"""
-    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=session['user_id']).first()
+    user_id = get_user_id_from_token()
+    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=user_id).first()
     if not replay_session:
         return jsonify({'status': 'error', 'message': '記錄不存在'}), 404
 
@@ -191,26 +180,20 @@ def update_session(session_id):
         replay_session.final_balance = data['final_balance']
 
     db.session.commit()
-
-    return jsonify({
-        'status': 'success',
-        'session': replay_session.to_dict()
-    })
+    return jsonify({'status': 'success', 'session': replay_session.to_dict()})
 
 
 @app.route('/api/sessions/<int:session_id>', methods=['DELETE'])
 @login_required
 def delete_session(session_id):
-    """刪除復盤記錄"""
-    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=session['user_id']).first()
+    user_id = get_user_id_from_token()
+    replay_session = ReplaySession.query.filter_by(id=session_id, user_id=user_id).first()
     if not replay_session:
         return jsonify({'status': 'error', 'message': '記錄不存在'}), 404
 
-    # 刪除相關交易記錄
     Trade.query.filter_by(session_id=session_id).delete()
     db.session.delete(replay_session)
     db.session.commit()
-
     return jsonify({'status': 'success', 'message': '已刪除'})
 
 
@@ -218,28 +201,25 @@ def delete_session(session_id):
 @app.route('/api/trades', methods=['GET'])
 @login_required
 def get_trades():
-    """取得用戶的所有交易記錄"""
+    user_id = get_user_id_from_token()
     session_id = request.args.get('session_id', type=int)
 
-    query = Trade.query.filter_by(user_id=session['user_id'])
+    query = Trade.query.filter_by(user_id=user_id)
     if session_id:
         query = query.filter_by(session_id=session_id)
 
     trades = query.order_by(Trade.created_at.desc()).all()
-    return jsonify({
-        'status': 'success',
-        'trades': [t.to_dict() for t in trades]
-    })
+    return jsonify({'status': 'success', 'trades': [t.to_dict() for t in trades]})
 
 
 @app.route('/api/trades', methods=['POST'])
 @login_required
 def create_trade():
-    """創建交易記錄"""
+    user_id = get_user_id_from_token()
     data = request.json
 
     trade = Trade(
-        user_id=session['user_id'],
+        user_id=user_id,
         session_id=data.get('session_id'),
         trade_type=data.get('trade_type'),
         lot_size=data.get('lot_size'),
@@ -256,16 +236,13 @@ def create_trade():
     db.session.add(trade)
     db.session.commit()
 
-    return jsonify({
-        'status': 'success',
-        'trade': trade.to_dict()
-    })
+    return jsonify({'status': 'success', 'trade': trade.to_dict()})
 
 
 @app.route('/api/trades/batch', methods=['POST'])
 @login_required
 def create_trades_batch():
-    """批量創建交易記錄"""
+    user_id = get_user_id_from_token()
     data = request.json
     trades_data = data.get('trades', [])
     session_id = data.get('session_id')
@@ -273,7 +250,7 @@ def create_trades_batch():
     created_trades = []
     for t in trades_data:
         trade = Trade(
-            user_id=session['user_id'],
+            user_id=user_id,
             session_id=session_id,
             trade_type=t.get('trade_type') or t.get('type'),
             lot_size=t.get('lot_size') or t.get('lotSize'),
@@ -289,16 +266,32 @@ def create_trades_batch():
         created_trades.append(trade)
 
     db.session.commit()
+    return jsonify({'status': 'success', 'count': len(created_trades)})
 
+
+@app.route('/api/stats', methods=['GET'])
+@login_required
+def get_stats():
+    user_id = get_user_id_from_token()
+    trades = Trade.query.filter_by(user_id=user_id).filter(Trade.pnl != None).all()
+    total = len(trades)
+    wins = len([t for t in trades if t.pnl > 0])
+    losses = len([t for t in trades if t.pnl < 0])
+    total_pnl = sum(t.pnl for t in trades)
     return jsonify({
         'status': 'success',
-        'count': len(created_trades)
+        'stats': {
+            'total_trades': total,
+            'wins': wins,
+            'losses': losses,
+            'win_rate': round(wins / total * 100, 1) if total > 0 else 0,
+            'total_pnl': round(total_pnl, 2),
+        }
     })
 
 
 # ========== K線數據 API ==========
 def load_data(timeframe='1d', start_date=None, end_date=None, limit=1000):
-    """載入指定時間周期的 K 線數據"""
     try:
         filename = TIMEFRAMES.get(timeframe, 'XAU_1d_data.csv')
         filepath = os.path.join(DATA_DIR, filename)
@@ -318,9 +311,11 @@ def load_data(timeframe='1d', start_date=None, end_date=None, limit=1000):
             df = df[df['Date'] <= end_dt]
 
         if limit and len(df) > limit:
-            df = df.tail(limit)
+            if start_date:
+                df = df.head(limit)
+            else:
+                df = df.tail(limit)
 
-        # 使用向量化操作
         if timeframe in ['1d', '1w', '1M']:
             df['time'] = df['Date'].dt.strftime('%Y-%m-%d')
         else:
@@ -338,29 +333,18 @@ def load_data(timeframe='1d', start_date=None, end_date=None, limit=1000):
 
 @app.route('/api/kline', methods=['GET'])
 def get_kline():
-    """獲取 K 線數據"""
     timeframe = request.args.get('timeframe', '1d')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     limit = request.args.get('limit', 1000, type=int)
 
     data = load_data(timeframe, start_date, end_date, limit)
-
-    return jsonify({
-        'status': 'success',
-        'timeframe': timeframe,
-        'count': len(data),
-        'data': data
-    })
+    return jsonify({'status': 'success', 'timeframe': timeframe, 'count': len(data), 'data': data})
 
 
 @app.route('/api/timeframes', methods=['GET'])
 def get_timeframes():
-    """獲取可用的時間周期列表"""
-    return jsonify({
-        'status': 'success',
-        'timeframes': list(TIMEFRAMES.keys())
-    })
+    return jsonify({'status': 'success', 'timeframes': list(TIMEFRAMES.keys())})
 
 
 if __name__ == '__main__':

@@ -52,19 +52,25 @@
   color: #888;
 }
 
-.lot-select {
+.lot-input {
   background: #2d2d30;
   color: #ffffff;
   border: 1px solid #3e3e42;
   padding: 6px 10px;
   border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
+  font-size: 14px;
+  width: 90px;
+  text-align: center;
 }
 
-.lot-select:focus {
+.lot-input:focus {
   outline: none;
   border-color: #0e639c;
+}
+
+.lot-input::-webkit-inner-spin-button,
+.lot-input::-webkit-outer-spin-button {
+  opacity: 1;
 }
 
 .quick-btn {
@@ -327,6 +333,31 @@
 
 .close-pos-btn.cancel:hover {
   background: #ff9800;
+}
+
+.action-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 快速取消/平倉 ✕ 按鈕 */
+.quick-cancel-btn {
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px solid #666;
+  border-radius: 3px;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.quick-cancel-btn:hover {
+  background: #ea3943;
+  border-color: #ea3943;
+  color: #fff;
 }
 
 /* 部分平倉輸入組 */

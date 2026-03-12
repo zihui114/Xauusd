@@ -10,6 +10,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
   const [activeTool, setActiveTool] = useState(null);
   const [horizontalLines, setHorizontalLines] = useState([]);
   const orderLinesRef = useRef([]);  // 訂單價格線的引用
+  const lastDataStartTimeRef = useRef(null); // 追蹤資料起始時間，判斷是否新載入
   const [showLineEditor, setShowLineEditor] = useState(false);
   const [editingLine, setEditingLine] = useState(null);
   const [lineForm, setLineForm] = useState({
@@ -24,12 +25,19 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
 
   const horizontalLinesRef = useRef([]);
 
+  // 水平線拖曳
+  const [hLinePixels, setHLinePixels] = useState([]); // [{ id, y, color }]
+  const hLinePixelsRef = useRef([]);
+  const hLineDragIdRef = useRef(null);     // 正在拖曳的線 id
+  const hLineDragPriceRef = useRef(null);  // 拖曳中的即時價格（不 setState，避免 re-render）
+
   // 矩形相關狀態
   const [rectangles, setRectangles] = useState([]);
   const [drawingRect, setDrawingRect] = useState(null); // 正在繪製的矩形 {startPrice, startTime, startX, startY}
   const [rectColor, setRectColor] = useState('rgba(33, 150, 243, 0.2)'); // 矩形顏色
   const rectanglesRef = useRef([]);
   const [rectPixels, setRectPixels] = useState([]); // 矩形的像素坐標
+  const rectPixelsRef = useRef([]); // 供事件監聽器讀取最新像素坐標
   const [previewRect, setPreviewRect] = useState(null); // 拖曳時的預覽矩形
   const [showRectEditor, setShowRectEditor] = useState(false); // 矩形編輯器
   const [editingRect, setEditingRect] = useState(null); // 正在編輯的矩形
@@ -37,6 +45,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     topPrice: '',
     bottomPrice: '',
     color: 'rgba(33, 150, 243, 0.2)',
+    extend: false,
   });
   const [editingRectId, setEditingRectId] = useState(null); // 正在編輯的矩形ID
   const [dragMode, setDragMode] = useState(null); // 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | null
@@ -44,6 +53,25 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
   const dragModeRef = useRef(null);
   const dragStartRef = useRef(null);
   const editingRectIdRef = useRef(null);
+
+  // 價格標注
+  const [priceLabels, setPriceLabels] = useState([]);
+  const priceLabelsRef = useRef([]);
+  const [priceLabelPixels, setPriceLabelPixels] = useState([]);
+  const [labelColor, setLabelColor] = useState('#f59e0b');
+  const labelColorRef = useRef('#f59e0b');
+  const dataRef = useRef([]);
+
+  // 趨勢線相關狀態
+  const [trendLines, setTrendLines] = useState([]);
+  const trendLinesRef = useRef([]);
+  const [trendLinePixels, setTrendLinePixels] = useState([]);
+  const trendLinePixelsRef = useRef([]);
+  const [drawingTrendLine, setDrawingTrendLine] = useState(null); // { logical, price } 第一個點
+  const drawingTrendLineRef = useRef(null);
+  const [previewTrendLine, setPreviewTrendLine] = useState(null); // { x1,y1,x2,y2 } 預覽線像素
+  const [trendLineColor, setTrendLineColor] = useState('#ef4444');
+  const trendLineColorRef = useRef('#ef4444');
 
   // 同步 horizontalLines 到 ref（供右鍵事件使用）
   useEffect(() => {
@@ -82,6 +110,11 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     rectanglesRef.current = rectangles;
   }, [rectangles]);
 
+  // 同步 rectPixels 到 ref（供事件監聽器使用）
+  useEffect(() => {
+    rectPixelsRef.current = rectPixels;
+  }, [rectPixels]);
+
   // 同步編輯狀態到 ref
   useEffect(() => {
     editingRectIdRef.current = editingRectId;
@@ -95,6 +128,42 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     dragStartRef.current = dragStart;
   }, [dragStart]);
 
+  useEffect(() => {
+    priceLabelsRef.current = priceLabels;
+  }, [priceLabels]);
+
+  useEffect(() => {
+    labelColorRef.current = labelColor;
+  }, [labelColor]);
+
+  useEffect(() => {
+    dataRef.current = data || [];
+  }, [data]);
+
+  useEffect(() => {
+    trendLinesRef.current = trendLines;
+  }, [trendLines]);
+
+  useEffect(() => {
+    trendLinePixelsRef.current = trendLinePixels;
+  }, [trendLinePixels]);
+
+  useEffect(() => {
+    drawingTrendLineRef.current = drawingTrendLine;
+  }, [drawingTrendLine]);
+
+  useEffect(() => {
+    trendLineColorRef.current = trendLineColor;
+  }, [trendLineColor]);
+
+  // 切換工具時取消趨勢線繪製
+  useEffect(() => {
+    if (activeTool !== 'trendline') {
+      setDrawingTrendLine(null);
+      drawingTrendLineRef.current = null;
+      setPreviewTrendLine(null);
+    }
+  }, [activeTool]);
 
   // 打開水平線編輯器
   const openLineEditor = (price = null, existingLine = null) => {
@@ -118,6 +187,47 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     setShowLineEditor(true);
     setActiveTool(null);
     activeToolRef.current = null;
+  };
+
+  // 更新趨勢線像素位置
+  const updateTrendLinePixels = () => {
+    if (!chartRef.current || !candlestickSeriesRef.current) return;
+    const timeScale = chartRef.current.timeScale();
+    const pixels = trendLinesRef.current.map(line => {
+      const x1 = timeScale.logicalToCoordinate(line.logical1);
+      const y1 = candlestickSeriesRef.current.priceToCoordinate(line.price1);
+      const x2 = timeScale.logicalToCoordinate(line.logical2);
+      const y2 = candlestickSeriesRef.current.priceToCoordinate(line.price2);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
+      return { id: line.id, x1, y1, x2, y2, color: line.color };
+    }).filter(Boolean);
+    setTrendLinePixels(pixels);
+    trendLinePixelsRef.current = pixels;
+  };
+
+  // 更新水平線像素 Y 座標（供拖曳用）
+  const updateHLinePixels = () => {
+    if (!candlestickSeriesRef.current) return;
+    const pixels = horizontalLinesRef.current.map(line => ({
+      id: line.id,
+      y: candlestickSeriesRef.current.priceToCoordinate(line.price),
+      color: line.color,
+    })).filter(p => p.y !== null);
+    setHLinePixels(pixels);
+    hLinePixelsRef.current = pixels;
+  };
+
+  // 更新價格標注像素位置
+  const updateLabelPixels = () => {
+    if (!candlestickSeriesRef.current || !chartRef.current) return;
+    const timeScale = chartRef.current.timeScale();
+    const pixels = priceLabelsRef.current.map(label => ({
+      id: label.id,
+      x: timeScale.timeToCoordinate(label.time),
+      y: candlestickSeriesRef.current.priceToCoordinate(label.price),
+      isHigh: label.isHigh,
+    }));
+    setPriceLabelPixels(pixels);
   };
 
   // 保存水平線
@@ -184,14 +294,86 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       return;
     }
 
+    // 新增價格標注 — 自動 snap 到最近 K 棒的高點或低點
+    if (activeToolRef.current === 'label') {
+      const logical = chartRef.current?.timeScale().coordinateToLogical(param.point.x);
+      const idx = logical !== null ? Math.round(logical) : -1;
+      const candles = dataRef.current;
+      const candle = candles[Math.max(0, Math.min(idx, candles.length - 1))];
+      if (!candle) return;
+
+      const highY = candlestickSeriesRef.current.priceToCoordinate(candle.high);
+      const lowY = candlestickSeriesRef.current.priceToCoordinate(candle.low);
+      const mouseY = param.point.y;
+      const snapToHigh = Math.abs(mouseY - highY) <= Math.abs(mouseY - lowY);
+      const snapPrice = snapToHigh ? candle.high : candle.low;
+
+      const newLabel = {
+        id: Date.now(),
+        price: parseFloat(snapPrice.toFixed(2)),
+        time: candle.time,
+        isHigh: snapToHigh,
+        color: labelColorRef.current,
+      };
+      setPriceLabels(prev => [...prev, newLabel]);
+      return;
+    }
+
+    // 趨勢線：第一次點擊設第一點，第二次點擊完成線
+    if (activeToolRef.current === 'trendline') {
+      const logical = chartRef.current?.timeScale().coordinateToLogical(param.point.x);
+      const idx = logical !== null ? Math.round(logical) : -1;
+      const candles = dataRef.current;
+      const candle = candles[Math.max(0, Math.min(idx, candles.length - 1))];
+      if (!candle) return;
+
+      const highY = candlestickSeriesRef.current.priceToCoordinate(candle.high);
+      const lowY = candlestickSeriesRef.current.priceToCoordinate(candle.low);
+      const mouseY = param.point.y;
+      const snapToHigh = Math.abs(mouseY - highY) <= Math.abs(mouseY - lowY);
+      const snapPrice = snapToHigh ? candle.high : candle.low;
+      const snapLogical = logical ?? idx;
+
+      if (!drawingTrendLineRef.current) {
+        const firstPoint = { logical: snapLogical, price: snapPrice };
+        setDrawingTrendLine(firstPoint);
+        drawingTrendLineRef.current = firstPoint;
+      } else {
+        const newLine = {
+          id: Date.now(),
+          logical1: drawingTrendLineRef.current.logical,
+          price1: drawingTrendLineRef.current.price,
+          logical2: snapLogical,
+          price2: snapPrice,
+          color: trendLineColorRef.current,
+        };
+        setTrendLines(prev => [...prev, newLine]);
+        setDrawingTrendLine(null);
+        drawingTrendLineRef.current = null;
+        setPreviewTrendLine(null);
+      }
+      return;
+    }
+
     // 如果正在編輯矩形，點擊其他地方退出編輯模式
     if (editingRectId && !dragMode) {
       setEditingRectId(null);
     }
 
-    // 新增水平線
+    // 新增水平線（snap 到最近 K 棒的高/低點）
     if (activeToolRef.current === 'hline') {
-      openLineEditor(price);
+      const logical = chartRef.current?.timeScale().coordinateToLogical(param.point.x);
+      const idx = logical !== null ? Math.round(logical) : -1;
+      const candles = dataRef.current;
+      const candle = candles[Math.max(0, Math.min(idx, candles.length - 1))];
+      if (candle) {
+        const highY = candlestickSeriesRef.current.priceToCoordinate(candle.high);
+        const lowY = candlestickSeriesRef.current.priceToCoordinate(candle.low);
+        const snapToHigh = Math.abs(param.point.y - highY) <= Math.abs(param.point.y - lowY);
+        openLineEditor(snapToHigh ? candle.high : candle.low);
+      } else {
+        openLineEditor(price);
+      }
     }
     // 矩形改用拖曳方式繪製，不在這裡處理
   };
@@ -281,11 +463,8 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     const chartWidth = chartContainerRef.current?.clientWidth || 800;
     const pixelsPerBar = chartWidth / (visibleRange.to - visibleRange.from);
 
-    // 估算時間間隔
-    const timeInterval = data && data.length > 1 ? data[1].time - data[0].time : 300;
-    const deltaTime = Math.round((deltaX / pixelsPerBar) * timeInterval);
-
     const original = currentDragStart.rect;
+    const deltaLogical = deltaX / pixelsPerBar;
 
     setRectangles(prev => prev.map(r => {
       if (r.id !== currentEditingRectId) return r;
@@ -295,32 +474,32 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
           ...r,
           startPrice: original.startPrice + deltaPrice,
           endPrice: original.endPrice + deltaPrice,
-          startTime: original.startTime + deltaTime,
-          endTime: original.endTime + deltaTime,
+          startLogical: (original.startLogical ?? 0) + deltaLogical,
+          endLogical: (original.endLogical ?? 0) + deltaLogical,
         };
       } else if (currentDragMode === 'resize-tl') {
         return {
           ...r,
           startPrice: original.startPrice + deltaPrice,
-          startTime: original.startTime + deltaTime,
+          startLogical: (original.startLogical ?? 0) + deltaLogical,
         };
       } else if (currentDragMode === 'resize-tr') {
         return {
           ...r,
           startPrice: original.startPrice + deltaPrice,
-          endTime: original.endTime + deltaTime,
+          endLogical: (original.endLogical ?? 0) + deltaLogical,
         };
       } else if (currentDragMode === 'resize-bl') {
         return {
           ...r,
           endPrice: original.endPrice + deltaPrice,
-          startTime: original.startTime + deltaTime,
+          startLogical: (original.startLogical ?? 0) + deltaLogical,
         };
       } else if (currentDragMode === 'resize-br') {
         return {
           ...r,
           endPrice: original.endPrice + deltaPrice,
-          endTime: original.endTime + deltaTime,
+          endLogical: (original.endLogical ?? 0) + deltaLogical,
         };
       }
       return r;
@@ -347,9 +526,12 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     const coords = getCoordinatesFromPixel(x, y);
     if (!coords || coords.price === null || coords.time === null) return;
 
+    const startLogical = chartRef.current.timeScale().coordinateToLogical(x);
+
     setDrawingRect({
       startPrice: coords.price,
       startTime: coords.time,
+      startLogical: startLogical ?? 0,
       startX: x,
       startY: y,
     });
@@ -400,13 +582,20 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       return;
     }
 
+    const endLogical = chartRef.current.timeScale().coordinateToLogical(x) ?? drawingRect.startLogical;
+    const logicalLeft = Math.min(drawingRect.startLogical, endLogical);
+    const logicalRight = Math.max(drawingRect.startLogical, endLogical);
+
     const newRect = {
       id: Date.now(),
       startPrice: Math.max(drawingRect.startPrice, coords.price),
       endPrice: Math.min(drawingRect.startPrice, coords.price),
       startTime: Math.min(drawingRect.startTime, coords.time),
       endTime: Math.max(drawingRect.startTime, coords.time),
+      startLogical: logicalLeft,
+      endLogical: logicalRight,
       color: rectColor,
+      extend: false,
     };
 
     setRectangles(prev => [...prev, newRect]);
@@ -421,6 +610,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       topPrice: rect.startPrice.toFixed(2),
       bottomPrice: rect.endPrice.toFixed(2),
       color: rect.color,
+      extend: rect.extend !== false,
     });
     setShowRectEditor(true);
   };
@@ -441,6 +631,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
           startPrice: Math.max(topPrice, bottomPrice),
           endPrice: Math.min(topPrice, bottomPrice),
           color: rectForm.color,
+          extend: rectForm.extend,
         };
       }
       return r;
@@ -497,31 +688,18 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
 
     if (clickedPrice === null) return;
 
-    // 先檢查是否點擊在矩形內
-    const timeScale = chartRef.current.timeScale();
-    const clickedRect = rectanglesRef.current.find(rect => {
-      try {
-        const x1 = timeScale.timeToCoordinate(rect.startTime);
-        const x2 = timeScale.timeToCoordinate(rect.endTime);
-        const y1 = candlestickSeriesRef.current.priceToCoordinate(rect.startPrice);
-        const y2 = candlestickSeriesRef.current.priceToCoordinate(rect.endPrice);
-
-        if (x1 === null || x2 === null || y1 === null || y2 === null) return false;
-
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-
-        return x >= minX && x <= maxX && y >= minY && y <= maxY;
-      } catch (err) {
-        return false;
-      }
-    });
+    // 先檢查是否點擊在矩形內（用已算好的像素座標）
+    const clickedRectPixel = rectPixelsRef.current.find(rp =>
+      x >= rp.x && x <= rp.x + rp.width &&
+      y >= rp.y && y <= rp.y + rp.height
+    );
+    const clickedRect = clickedRectPixel
+      ? rectanglesRef.current.find(r => r.id === clickedRectPixel.id)
+      : null;
 
     if (clickedRect) {
-      // 雙擊矩形進入編輯模式
-      setEditingRectId(clickedRect.id);
+      // 已在編輯此矩形 → 退出；否則進入編輯模式
+      setEditingRectId(prev => prev === clickedRect.id ? null : clickedRect.id);
       return;
     }
 
@@ -548,6 +726,20 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     setHorizontalLines([]);
     setRectangles([]);
     setDrawingRect(null);
+    setPriceLabels([]);
+    setTrendLines([]);
+    setDrawingTrendLine(null);
+    drawingTrendLineRef.current = null;
+    setPreviewTrendLine(null);
+  };
+
+  // 點到線段的距離（用於趨勢線點擊判定）
+  const pointToSegmentDistance = (px, py, x1, y1, x2, y2) => {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
   };
 
   // 時間轉像素坐標（支援未來區域）
@@ -585,17 +777,29 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     }
 
     const priceScale = candlestickSeriesRef.current;
+    const chartWidth = chartContainerRef.current?.clientWidth || 800;
+
+    const timeScale = chartRef.current.timeScale();
 
     const pixels = rectangles.map(rect => {
       try {
-        const x1 = timeToPixel(rect.startTime);
-        const x2 = timeToPixel(rect.endTime);
         const y1 = priceScale.priceToCoordinate(rect.startPrice);
         const y2 = priceScale.priceToCoordinate(rect.endPrice);
+        if (y1 === null || y2 === null) return null;
 
-        if (x1 === null || x2 === null || y1 === null || y2 === null) {
-          return null;
-        }
+        // 用 logical index 轉像素，正確處理跨天 gap
+        const x1 = rect.startLogical != null
+          ? timeScale.logicalToCoordinate(rect.startLogical)
+          : timeToPixel(rect.startTime);
+        if (x1 === null) return null;
+
+        // 延伸模式：右邊界固定在圖表右緣
+        const x2 = rect.extend
+          ? chartWidth
+          : rect.endLogical != null
+            ? timeScale.logicalToCoordinate(rect.endLogical)
+            : timeToPixel(rect.endTime);
+        if (x2 === null) return null;
 
         return {
           id: rect.id,
@@ -629,27 +833,14 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
 
     if (clickedPrice === null) return;
 
-    // 檢查是否點擊在矩形內
-    const timeScale = chartRef.current.timeScale();
-    const clickedRect = rectanglesRef.current.find(rect => {
-      try {
-        const x1 = timeScale.timeToCoordinate(rect.startTime);
-        const x2 = timeScale.timeToCoordinate(rect.endTime);
-        const y1 = candlestickSeriesRef.current.priceToCoordinate(rect.startPrice);
-        const y2 = candlestickSeriesRef.current.priceToCoordinate(rect.endPrice);
-
-        if (x1 === null || x2 === null || y1 === null || y2 === null) return false;
-
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-
-        return x >= minX && x <= maxX && y >= minY && y <= maxY;
-      } catch (err) {
-        return false;
-      }
-    });
+    // 檢查是否點擊在矩形內（用已算好的像素座標）
+    const clickedRectPixel = rectPixelsRef.current.find(rp =>
+      x >= rp.x && x <= rp.x + rp.width &&
+      y >= rp.y && y <= rp.y + rp.height
+    );
+    const clickedRect = clickedRectPixel
+      ? rectanglesRef.current.find(r => r.id === clickedRectPixel.id)
+      : null;
 
     if (clickedRect) {
       e.preventDefault();
@@ -669,6 +860,16 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     if (nearestLine) {
       e.preventDefault();
       openLineEditor(null, nearestLine);
+      return;
+    }
+
+    // 找出最接近的趨勢線（8px 以內）
+    const nearestTrendLine = trendLinePixelsRef.current.find(tl =>
+      pointToSegmentDistance(x, y, tl.x1, tl.y1, tl.x2, tl.y2) < 8
+    );
+    if (nearestTrendLine) {
+      e.preventDefault();
+      setTrendLines(prev => prev.filter(l => l.id !== nearestTrendLine.id));
     }
   };
 
@@ -694,6 +895,16 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       const chart = createChart(chartContainerRef.current, {
         width: containerWidth,
         height: containerHeight,
+        localization: {
+          timeFormatter: (timestamp) => {
+            const d = new Date((timestamp + 6 * 3600) * 1000);
+            const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(d.getUTCDate()).padStart(2, '0');
+            const hh = String(d.getUTCHours()).padStart(2, '0');
+            const min = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${mm}/${dd} ${hh}:${min}`;
+          },
+        },
         layout: {
           backgroundColor: '#ffffff',
           textColor: '#191919',
@@ -808,23 +1019,23 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     }));
 
     try {
+      // 判斷是否為新資料集（換日期或換 Session）
+      const newStartTime = formattedData[0]?.time ?? null;
+      const isNewDataset = newStartTime !== lastDataStartTimeRef.current;
+      lastDataStartTimeRef.current = newStartTime;
+
       candlestickSeriesRef.current.setData(formattedData);
 
-      // 平滑滾動：設置固定可視範圍，K棒末端顯示在中間（右側留白）
-      if (chartRef.current && formattedData.length > 0) {
+      // 只在新資料集載入時才重設視角，播放中追加 K 棒不強制跳視角
+      if (isNewDataset && chartRef.current && formattedData.length > 0) {
         const dataLength = formattedData.length;
-        // 計算可視範圍：左側顯示一半K棒，右側留白一半空間
         const halfBars = Math.floor(visibleBars / 2);
         const from = Math.max(0, dataLength - halfBars);
-        const to = dataLength + halfBars; // 右側留白
+        const to = dataLength + halfBars;
 
-        // 延遲設置可視範圍，確保數據已渲染
         setTimeout(() => {
           if (chartRef.current) {
-            chartRef.current.timeScale().setVisibleLogicalRange({
-              from: from,
-              to: to
-            });
+            chartRef.current.timeScale().setVisibleLogicalRange({ from, to });
           }
         }, 0);
       }
@@ -925,6 +1136,109 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     };
   }, [rectangles, data]);
+
+  // 價格標注像素位置更新
+  useEffect(() => {
+    if (!chartRef.current) return;
+    updateLabelPixels();
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(updateLabelPixels);
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(updateLabelPixels);
+    };
+  }, [priceLabels]);
+
+  // 趨勢線像素位置更新
+  useEffect(() => {
+    if (!chartRef.current) return;
+    updateTrendLinePixels();
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(updateTrendLinePixels);
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(updateTrendLinePixels);
+    };
+  }, [trendLines, data]);
+
+  // 趨勢線預覽滑鼠追蹤
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const handleMouseMoveForPreview = (e) => {
+      if (activeToolRef.current !== 'trendline' || !drawingTrendLineRef.current) {
+        setPreviewTrendLine(null);
+        return;
+      }
+      if (!chartRef.current || !candlestickSeriesRef.current) return;
+      const containerRect = container.getBoundingClientRect();
+      const x2 = e.clientX - containerRect.left;
+      const y2 = e.clientY - containerRect.top;
+      const timeScale = chartRef.current.timeScale();
+      const x1 = timeScale.logicalToCoordinate(drawingTrendLineRef.current.logical);
+      const y1 = candlestickSeriesRef.current.priceToCoordinate(drawingTrendLineRef.current.price);
+      if (x1 === null || y1 === null) return;
+      setPreviewTrendLine({ x1, y1, x2, y2 });
+    };
+    container.addEventListener('mousemove', handleMouseMoveForPreview);
+    return () => container.removeEventListener('mousemove', handleMouseMoveForPreview);
+  }, []);
+
+  // 水平線像素 Y 座標更新（垂直縮放、線變動時重算）
+  useEffect(() => {
+    if (!chartRef.current) return;
+    updateHLinePixels();
+    const timeScale = chartRef.current.timeScale();
+    // 縮放/滾動時也更新（價格軸縮放會改變 Y）
+    timeScale.subscribeVisibleLogicalRangeChange(updateHLinePixels);
+    return () => timeScale.unsubscribeVisibleLogicalRangeChange(updateHLinePixels);
+  }, [horizontalLines]);
+
+  // 水平線拖曳（document 級別，mount 一次）
+  useEffect(() => {
+    const handleDragMove = (e) => {
+      if (!hLineDragIdRef.current || !candlestickSeriesRef.current || !chartContainerRef.current) return;
+      const containerRect = chartContainerRef.current.getBoundingClientRect();
+      const y = e.clientY - containerRect.top;
+      const newPrice = candlestickSeriesRef.current.coordinateToPrice(y);
+      if (newPrice === null) return;
+      hLineDragPriceRef.current = newPrice;
+      // 直接呼叫 applyOptions — 不 setState，避免 re-render
+      const line = horizontalLinesRef.current.find(l => l.id === hLineDragIdRef.current);
+      if (line?.priceLineRef) {
+        try { line.priceLineRef.applyOptions({ price: newPrice }); } catch (e) {}
+      }
+    };
+    const handleDragEnd = () => {
+      if (!hLineDragIdRef.current) return;
+      const finalPrice = hLineDragPriceRef.current;
+      if (finalPrice !== null) {
+        // 更新 React state（讓 hLinePixels 也跟著更新）
+        setHorizontalLines(prev => prev.map(l =>
+          l.id === hLineDragIdRef.current ? { ...l, price: finalPrice } : l
+        ));
+      }
+      hLineDragIdRef.current = null;
+      hLineDragPriceRef.current = null;
+      document.body.style.cursor = '';
+      document.removeEventListener('mousemove', handleDragMove);
+      document.removeEventListener('mouseup', handleDragEnd);
+    };
+
+    // 存到 ref 讓拖曳把手可以呼叫
+    window.__hLineDragHandlers = { handleDragMove, handleDragEnd };
+    return () => { delete window.__hLineDragHandlers; };
+  }, []);
+
+  // 開始拖曳水平線
+  const startHLineDrag = (e, lineId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hLineDragIdRef.current = lineId;
+    hLineDragPriceRef.current = null;
+    document.body.style.cursor = 'ns-resize';
+    const { handleDragMove, handleDragEnd } = window.__hLineDragHandlers || {};
+    if (handleDragMove) document.addEventListener('mousemove', handleDragMove);
+    if (handleDragEnd) document.addEventListener('mouseup', handleDragEnd);
+  };
 
   // 訂單價格線顯示（進場價、止損、止盈）
   useEffect(() => {
@@ -1030,7 +1344,21 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
           >
             ▢
           </button>
-          {(horizontalLines.length > 0 || rectangles.length > 0) && (
+          <button
+            className={`tool-btn ${activeTool === 'label' ? 'active' : ''}`}
+            onClick={() => setActiveTool(activeTool === 'label' ? null : 'label')}
+            title="價格標注 - 點擊圖表標注價格"
+          >
+            ⌖
+          </button>
+          <button
+            className={`tool-btn ${activeTool === 'trendline' ? 'active' : ''}`}
+            onClick={() => setActiveTool(activeTool === 'trendline' ? null : 'trendline')}
+            title="趨勢線 - 點兩次繪製，右鍵刪除"
+          >
+            ╱
+          </button>
+          {(horizontalLines.length > 0 || rectangles.length > 0 || priceLabels.length > 0 || trendLines.length > 0) && (
             <button
               className="tool-btn clear-btn"
               onClick={clearAllDrawings}
@@ -1061,6 +1389,42 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
           {activeTool === 'rect' && drawingRect && (
             <span className="tool-hint">放開完成矩形</span>
           )}
+          {activeTool === 'label' && (
+            <div className="rect-color-picker">
+              {['#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#000000'].map(c => (
+                <button
+                  key={c}
+                  className={`rect-color-btn ${labelColor === c ? 'active' : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setLabelColor(c)}
+                />
+              ))}
+            </div>
+          )}
+          {activeTool === 'label' && (
+            <span className="tool-hint">點擊圖表標注價格</span>
+          )}
+          {activeTool === 'trendline' && (
+            <div className="rect-color-picker">
+              {['#ef4444', '#2196F3', '#4CAF50', '#ff9800', '#9c27b0', '#000000'].map(c => (
+                <button
+                  key={c}
+                  className={`rect-color-btn ${trendLineColor === c ? 'active' : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setTrendLineColor(c)}
+                />
+              ))}
+            </div>
+          )}
+          {activeTool === 'trendline' && !drawingTrendLine && (
+            <span className="tool-hint">點擊第一個點（自動吸附高/低點）</span>
+          )}
+          {activeTool === 'trendline' && drawingTrendLine && (
+            <span className="tool-hint">點擊第二個點完成趨勢線</span>
+          )}
+          {trendLines.length > 0 && !activeTool && (
+            <span className="lines-count">{trendLines.length} 條趨勢線（右鍵刪除）</span>
+          )}
           {movingLine && (
             <span className="tool-hint moving">點擊新位置移動線 | <button onClick={() => setMovingLine(null)}>取消</button></span>
           )}
@@ -1068,7 +1432,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
             <span className="tool-hint moving">拖曳移動或調整大小 | <button onClick={() => setEditingRectId(null)}>完成</button></span>
           )}
           {horizontalLines.length > 0 && !movingLine && !activeTool && (
-            <span className="lines-count">{horizontalLines.length} 條線（雙擊可移動）</span>
+            <span className="lines-count">{horizontalLines.length} 條線（可拖曳，右鍵編輯）</span>
           )}
           {rectangles.length > 0 && !activeTool && !editingRectId && (
             <span className="lines-count">{rectangles.length} 個矩形（雙擊編輯，右鍵設定）</span>
@@ -1174,6 +1538,18 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
             </div>
 
             <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={rectForm.extend}
+                  onChange={(e) => setRectForm({ ...rectForm, extend: e.target.checked })}
+                  style={{ marginRight: 6 }}
+                />
+                延伸到最新K棒
+              </label>
+            </div>
+
+            <div className="form-group">
               <label>顏色:</label>
               <div className="color-options">
                 {RECT_COLORS.map(c => (
@@ -1211,7 +1587,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
       )}
 
       <div className="chart-canvas" ref={chartContainerRef}>
-        {/* 矩形繪製覆蓋層 */}
+        {/* 矩形 + 趨勢線繪製覆蓋層 */}
         <svg className="rect-overlay">
           {/* 已完成的矩形 */}
           {rectPixels.map(rect => (
@@ -1240,7 +1616,74 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
               strokeDasharray="5,5"
             />
           )}
+          {/* 已完成的趨勢線 */}
+          {trendLinePixels.map(tl => (
+            <line
+              key={tl.id}
+              x1={tl.x1} y1={tl.y1}
+              x2={tl.x2} y2={tl.y2}
+              stroke={tl.color}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ))}
+          {/* 趨勢線預覽（第一點已設，滑鼠移動時顯示） */}
+          {previewTrendLine && (
+            <line
+              x1={previewTrendLine.x1} y1={previewTrendLine.y1}
+              x2={previewTrendLine.x2} y2={previewTrendLine.y2}
+              stroke={trendLineColor}
+              strokeWidth="2"
+              strokeDasharray="6,4"
+              strokeLinecap="round"
+              opacity="0.7"
+            />
+          )}
+          {/* 第一個點的標記 */}
+          {drawingTrendLine && (() => {
+            const ts = chartRef.current?.timeScale();
+            const x = ts?.logicalToCoordinate(drawingTrendLine.logical);
+            const y = candlestickSeriesRef.current?.priceToCoordinate(drawingTrendLine.price);
+            if (x === null || y === null || x === undefined || y === undefined) return null;
+            return <circle cx={x} cy={y} r="5" fill={trendLineColor} opacity="0.9" />;
+          })()}
         </svg>
+        {/* 水平線拖曳把手（透明橫條，覆蓋在線上） */}
+        {hLinePixels.map(hp => (
+          hp.y !== null && (
+            <div
+              key={hp.id}
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: hp.y - 6,
+                width: '100%',
+                height: 12,
+                cursor: 'ns-resize',
+                zIndex: 10,
+              }}
+              onMouseDown={(e) => startHLineDrag(e, hp.id)}
+            />
+          )
+        ))}
+        {/* 價格標注 */}
+        {priceLabelPixels.map(px => {
+          const label = priceLabels.find(l => l.id === px.id);
+          if (!label || px.y === null || px.y === undefined || px.x === null) return null;
+          return (
+            <div
+              key={label.id}
+              className={`price-label-tag ${px.isHigh ? 'label-high' : 'label-low'}`}
+              style={{ left: px.x, top: px.y, borderColor: label.color }}
+            >
+              <span style={{ color: label.color }}>{label.price.toFixed(2)}</span>
+              <button
+                className="price-label-delete"
+                onClick={() => setPriceLabels(prev => prev.filter(l => l.id !== label.id))}
+              >×</button>
+            </div>
+          );
+        })}
         {/* 矩形編輯模式 - 顯示拖曳把手 */}
         {editingRectId && rectPixels.find(r => r.id === editingRectId) && (() => {
           const editRect = rectPixels.find(r => r.id === editingRectId);

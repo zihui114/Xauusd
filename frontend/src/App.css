@@ -259,8 +259,16 @@ body {
   z-index: 1000;
 }
 
+.user-area .user-stats {
+  color: #9cdcfe;
+  font-size: 0.8rem;
+  padding: 0 8px;
+  border-left: 1px solid #444;
+  border-right: 1px solid #444;
+}
+
 .user-area .user-name {
-  color: #4ec9b0;
+  color: #000000;
   font-weight: 500;
   margin-right: 8px;
 }
@@ -295,4 +303,91 @@ body {
 
 .user-area .user-btn.logout:hover {
   background: #6a4e4e;
+}
+
+.user-area .active-session-name {
+  color: #4ec9b0;
+  font-size: 0.8rem;
+  padding: 0 8px;
+  border-left: 1px solid #444;
+  border-right: 1px solid #444;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 新增復盤 modal */
+.new-session-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.new-session-modal {
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 10px;
+  padding: 28px 32px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.new-session-modal h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #fff;
+}
+
+.new-session-modal input {
+  padding: 10px 12px;
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+.new-session-modal input:focus {
+  border-color: #0e639c;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn.confirm {
+  background: #0e639c;
+  color: #fff;
+}
+
+.modal-btn.confirm:hover {
+  background: #1177bb;
+}
+
+.modal-btn.cancel {
+  background: #3e3e42;
+  color: #ccc;
+}
+
+.modal-btn.cancel:hover {
+  background: #4e4e52;
 }

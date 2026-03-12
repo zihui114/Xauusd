@@ -13,7 +13,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
     setLoading(true);
     try {
       const response = await fetch('http://localhost:5001/api/sessions', {
-        credentials: 'include'
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
       });
       const result = await response.json();
       if (result.status === 'success') {
@@ -29,16 +29,18 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
   const loadSessionDetail = async (sessionId) => {
     try {
       const response = await fetch(`http://localhost:5001/api/sessions/${sessionId}`, {
-        credentials: 'include'
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
       });
       const result = await response.json();
       if (result.status === 'success') {
         setSelectedSession(result.session);
         setSessionTrades(result.trades);
+        return { session: result.session, trades: result.trades };
       }
     } catch (err) {
       console.error('載入詳細記錄失敗:', err);
     }
+    return null;
   };
 
   // 刪除復盤記錄
@@ -48,7 +50,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
     try {
       const response = await fetch(`http://localhost:5001/api/sessions/${sessionId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
       });
       const result = await response.json();
       if (result.status === 'success') {
@@ -83,8 +85,8 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
   };
 
   return (
-    <div className="session-history-overlay">
-      <div className="session-history-panel">
+    <div className="session-history-overlay" onClick={onClose}>
+      <div className="session-history-panel" onClick={e => e.stopPropagation()}>
         <div className="panel-header">
           <h2>復盤記錄</h2>
           <button className="close-btn" onClick={onClose}>×</button>
@@ -108,11 +110,22 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                   >
                     <div className="session-name">{session.name}</div>
                     <div className="session-meta">
-                      <span>{session.start_date}</span>
+                      <span>復盤日期 {session.start_date}</span>
                       <span>{session.timeframe}</span>
                       <span>{session.trade_count} 筆交易</span>
                     </div>
                     <div className="session-actions">
+                      <button
+                        className="resume-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          loadSessionDetail(session.id).then((data) => {
+                            if (data && onLoadSession) onLoadSession(data.session, data.trades);
+                          });
+                        }}
+                      >
+                        繼續
+                      </button>
                       <button
                         className="delete-btn"
                         onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
@@ -131,89 +144,60 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
             {selectedSession ? (
               <>
                 <h3>{selectedSession.name}</h3>
-                <div className="detail-info">
-                  <div className="info-row">
-                    <span>開始日期:</span>
-                    <span>{selectedSession.start_date}</span>
-                  </div>
-                  <div className="info-row">
-                    <span>時間週期:</span>
-                    <span>{selectedSession.timeframe}</span>
-                  </div>
-                  <div className="info-row">
-                    <span>初始資金:</span>
-                    <span>${selectedSession.initial_balance?.toFixed(2)}</span>
-                  </div>
-                  {selectedSession.final_balance && (
-                    <div className="info-row">
-                      <span>最終資金:</span>
-                      <span>${selectedSession.final_balance.toFixed(2)}</span>
-                    </div>
-                  )}
+                <div className="session-meta-line">
+                  <span>復盤日期：{selectedSession.start_date}</span>
+                  <span>{selectedSession.timeframe}</span>
                 </div>
 
-                {sessionTrades.length > 0 && (
-                  <>
-                    <h4>交易統計</h4>
-                    {(() => {
-                      const stats = calculateStats(sessionTrades);
-                      return (
-                        <div className="stats-grid">
-                          <div className="stat-item">
-                            <div className="stat-value">{stats.total}</div>
-                            <div className="stat-label">總交易數</div>
-                          </div>
-                          <div className="stat-item">
-                            <div className={`stat-value ${stats.totalPnL >= 0 ? 'positive' : 'negative'}`}>
-                              {stats.totalPnL >= 0 ? '+' : ''}{stats.totalPnL.toFixed(2)}
-                            </div>
-                            <div className="stat-label">總盈虧</div>
-                          </div>
-                          <div className="stat-item">
-                            <div className="stat-value">{stats.winRate}%</div>
-                            <div className="stat-label">勝率</div>
-                          </div>
-                          <div className="stat-item">
-                            <div className="stat-value positive">{stats.winTrades}</div>
-                            <div className="stat-label">獲利</div>
-                          </div>
-                          <div className="stat-item">
-                            <div className="stat-value negative">{stats.loseTrades}</div>
-                            <div className="stat-label">虧損</div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    <h4>交易明細</h4>
-                    <div className="trades-list">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>類型</th>
-                            <th>手數</th>
-                            <th>進場</th>
-                            <th>出場</th>
-                            <th>盈虧</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sessionTrades.map(trade => (
-                            <tr key={trade.id}>
-                              <td className={trade.trade_type}>{trade.trade_type?.toUpperCase()}</td>
-                              <td>{trade.lot_size}</td>
-                              <td>{trade.entry_price?.toFixed(2)}</td>
-                              <td>{trade.close_price?.toFixed(2) || '-'}</td>
-                              <td className={trade.pnl >= 0 ? 'positive' : 'negative'}>
-                                {trade.pnl != null ? (trade.pnl >= 0 ? '+' : '') + trade.pnl.toFixed(2) : '-'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                {sessionTrades.length > 0 && (() => {
+                  const stats = calculateStats(sessionTrades);
+                  return (
+                    <div className="stats-inline">
+                      <span>{stats.total} 筆</span>
+                      <span className={stats.totalPnL >= 0 ? 'positive' : 'negative'}>
+                        {stats.totalPnL >= 0 ? '+' : ''}{stats.totalPnL.toFixed(2)}
+                      </span>
+                      <span>勝率 {stats.winRate}%</span>
+                      <span className="positive">{stats.winTrades} 勝</span>
+                      <span className="negative">{stats.loseTrades} 敗</span>
+                      <span className="session-meta-line">
+                        本金 ${selectedSession.initial_balance?.toFixed(0)}
+                        {selectedSession.final_balance && ` · 最終 $${selectedSession.final_balance.toFixed(0)}`}
+                      </span>
                     </div>
-                  </>
-                )}
+                  );
+                })()}
+
+                <div className="trades-list">
+                  {sessionTrades.length === 0 ? (
+                    <div className="empty">尚無交易記錄</div>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>類型</th>
+                          <th>手數</th>
+                          <th>進場</th>
+                          <th>出場</th>
+                          <th>盈虧</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessionTrades.map(trade => (
+                          <tr key={trade.id}>
+                            <td className={trade.trade_type}>{trade.trade_type?.toUpperCase()}</td>
+                            <td>{trade.lot_size}</td>
+                            <td>{trade.entry_price?.toFixed(2)}</td>
+                            <td>{trade.close_price?.toFixed(2) || '-'}</td>
+                            <td className={trade.pnl >= 0 ? 'positive' : 'negative'}>
+                              {trade.pnl != null ? (trade.pnl >= 0 ? '+' : '') + trade.pnl.toFixed(2) : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </>
             ) : (
               <div className="no-selection">

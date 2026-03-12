@@ -622,3 +622,41 @@
 .rect-handle-br {
   cursor: nwse-resize;
 }
+
+/* 價格標注 */
+.price-label-tag {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid #f59e0b;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: all;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  z-index: 10;
+  cursor: default;
+  transform: translate(-50%, -110%); /* 高點：標注在點的上方 */
+}
+
+.price-label-tag.label-low {
+  transform: translate(-50%, 10%); /* 低點：標注在點的下方 */
+}
+
+.price-label-delete {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 0 0 2px;
+  line-height: 1;
+}
+
+.price-label-delete:hover {
+  color: #ef4444;
+}

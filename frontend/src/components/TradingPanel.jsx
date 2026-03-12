@@ -3,6 +3,8 @@ import './TradingPanel.css';
 
 function TradingPanel({
   balance,
+  initialBalance = 10000,
+  onInitialBalanceChange,
   positions,
   onAddPosition,
   onUpdatePosition,
@@ -14,11 +16,13 @@ function TradingPanel({
   const [position, setPosition] = useState({ x: 50, y: 400 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [lotSize, setLotSize] = useState(0.01);
+  const [lotSize, setLotSize] = useState(0.1);
   const [editingCell, setEditingCell] = useState(null); // { positionId, field }
   const [editValue, setEditValue] = useState('');
   const [closingPosition, setClosingPosition] = useState(null); // 正在平倉的訂單
   const [closeLotSize, setCloseLotSize] = useState(''); // 要平的手數
+  const [editingInitialBalance, setEditingInitialBalance] = useState(false);
+  const [initialBalanceInput, setInitialBalanceInput] = useState('');
   const panelRef = useRef(null);
   const inputRef = useRef(null);
   const closeInputRef = useRef(null);
@@ -115,12 +119,51 @@ function TradingPanel({
       return;
     }
 
+    // 驗證止損止盈邏輯（只在下單階段，已觸發的單子允許保本移損）
+    if (newValue !== null && !pos.wasTriggered) {
+      const entry = pos.entryPrice;
+      if (field === 'stopLoss') {
+        if (pos.type === 'buy' && newValue >= entry) {
+          alert(`買單止損必須低於開倉價 (${entry.toFixed(2)})`);
+          setEditingCell(null);
+          return;
+        }
+        if (pos.type === 'sell' && newValue <= entry) {
+          alert(`賣單止損必須高於開倉價 (${entry.toFixed(2)})`);
+          setEditingCell(null);
+          return;
+        }
+      }
+      if (field === 'takeProfit') {
+        if (pos.type === 'buy' && newValue <= entry) {
+          alert(`買單止盈必須高於開倉價 (${entry.toFixed(2)})`);
+          setEditingCell(null);
+          return;
+        }
+        if (pos.type === 'sell' && newValue >= entry) {
+          alert(`賣單止盈必須低於開倉價 (${entry.toFixed(2)})`);
+          setEditingCell(null);
+          return;
+        }
+      }
+    }
+
     // 更新持倉
     const updates = { [field]: newValue };
 
     // 檢查是否變成預掛單（開倉價≠現價）
     if (field === 'entryPrice' && newValue !== null) {
-      updates.status = Math.abs(newValue - currentPrice) > 0.01 ? 'pending' : 'open';
+      const isPending = Math.abs(newValue - currentPrice) > 0.01;
+      updates.status = isPending ? 'pending' : 'open';
+      if (isPending) {
+        if (pos.type === 'buy') {
+          updates.orderSubType = newValue > currentPrice ? 'buy_stop' : 'buy_limit';
+        } else {
+          updates.orderSubType = newValue < currentPrice ? 'sell_stop' : 'sell_limit';
+        }
+      } else {
+        updates.orderSubType = null;
+      }
     }
 
     if (onUpdatePosition) {
@@ -213,6 +256,8 @@ function TradingPanel({
 
   // 計算總浮動盈虧
   const totalPnL = positions.reduce((sum, pos) => sum + calculatePnL(pos), 0);
+  // 總獲利 = 已實現（餘額變化）+ 浮動
+  const totalProfit = (balance - initialBalance) + totalPnL;
 
   if (!isVisible) return null;
 
@@ -236,19 +281,32 @@ function TradingPanel({
         <div className="quick-order-section">
           <div className="lot-input-group">
             <label>手數:</label>
-            <select
+            <input
+              type="number"
+              list="lot-presets"
               value={lotSize}
-              onChange={(e) => setLotSize(parseFloat(e.target.value))}
-              className="lot-select"
-            >
-              <option value={0.01}>0.01</option>
-              <option value={0.02}>0.02</option>
-              <option value={0.05}>0.05</option>
-              <option value={0.1}>0.1</option>
-              <option value={0.2}>0.2</option>
-              <option value={0.5}>0.5</option>
-              <option value={1}>1.0</option>
-            </select>
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val > 0) setLotSize(val);
+                else setLotSize(e.target.value);
+              }}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (isNaN(val) || val <= 0) setLotSize(0.1);
+              }}
+              step="0.01"
+              min="0.01"
+              className="lot-input"
+            />
+            <datalist id="lot-presets">
+              <option value="0.01" />
+              <option value="0.02" />
+              <option value="0.05" />
+              <option value="0.1" />
+              <option value="0.2" />
+              <option value="0.5" />
+              <option value="1" />
+            </datalist>
           </div>
           <button className="quick-btn buy" onClick={() => quickOrder('buy')}>
             買入
@@ -269,7 +327,6 @@ function TradingPanel({
           <thead>
             <tr>
               <th>狀態</th>
-              <th>開倉時間</th>
               <th>類別</th>
               <th>手數</th>
               <th>開倉價</th>
@@ -284,7 +341,7 @@ function TradingPanel({
           <tbody>
             {positions.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan="11">點擊上方「買入」或「賣出」建立新訂單</td>
+                <td colSpan="10">點擊上方「買入」或「賣出」建立新訂單</td>
               </tr>
             ) : (
               positions.map(pos => {
@@ -304,7 +361,6 @@ function TradingPanel({
                         {pos.status === 'pending' ? '預掛' : '持倉'}
                       </span>
                     </td>
-                    <td className="time-cell">{openTime}</td>
                     <td>
                       <span className={`type-badge ${pos.type}`}>
                         {pos.type === 'buy' ? 'BUY' : 'SELL'}
@@ -312,26 +368,31 @@ function TradingPanel({
                     </td>
                     <td>{pos.lotSize}</td>
 
-                    {/* 開倉價 - 可編輯 */}
-                    <td
-                      className="editable-cell"
-                      onClick={() => startEdit(pos.id, 'entryPrice', pos.entryPrice)}
-                    >
-                      {editingCell?.positionId === pos.id && editingCell?.field === 'entryPrice' ? (
-                        <input
-                          ref={inputRef}
-                          type="number"
-                          step="0.01"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onBlur={confirmEdit}
-                          onKeyDown={handleKeyDown}
-                          className="inline-edit-input"
-                        />
-                      ) : (
-                        <span className="editable-value">{pos.entryPrice.toFixed(2)}</span>
-                      )}
-                    </td>
+                    {/* 開倉價 - 未觸發時可編輯 */}
+                    {(() => {
+                      const canEdit = !pos.wasTriggered;
+                      return (
+                        <td
+                          className={canEdit ? 'editable-cell' : ''}
+                          onClick={() => canEdit && startEdit(pos.id, 'entryPrice', pos.entryPrice)}
+                        >
+                          {canEdit && editingCell?.positionId === pos.id && editingCell?.field === 'entryPrice' ? (
+                            <input
+                              ref={inputRef}
+                              type="number"
+                              step="0.01"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onBlur={confirmEdit}
+                              onKeyDown={handleKeyDown}
+                              className="inline-edit-input"
+                            />
+                          ) : (
+                            <span className={canEdit ? 'editable-value' : ''}>{pos.entryPrice.toFixed(2)}</span>
+                          )}
+                        </td>
+                      );
+                    })()}
 
                     {/* 止損 - 可編輯 */}
                     <td
@@ -388,10 +449,11 @@ function TradingPanel({
                     <td className="action-cell">
                       {pos.status === 'pending' ? (
                         <button
-                          className="close-pos-btn cancel"
+                          className="quick-cancel-btn"
+                          title="取消預掛單"
                           onClick={() => onClosePosition(pos.id, pos.lotSize, 0)}
                         >
-                          取消
+                          ✕
                         </button>
                       ) : closingPosition?.id === pos.id ? (
                         <div className="close-input-group">
@@ -411,12 +473,24 @@ function TradingPanel({
                           <button className="close-cancel-btn" onClick={cancelClose}>✕</button>
                         </div>
                       ) : (
-                        <button
-                          className="close-pos-btn"
-                          onClick={() => startClose(pos)}
-                        >
-                          平倉
-                        </button>
+                        <div className="action-btn-group">
+                          <button
+                            className="close-pos-btn"
+                            onClick={() => startClose(pos)}
+                          >
+                            平倉
+                          </button>
+                          <button
+                            className="quick-cancel-btn"
+                            title="立即全部平倉"
+                            onClick={() => {
+                              const pnl = calculatePnL(pos);
+                              onClosePosition(pos.id, pos.lotSize, pnl);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -430,6 +504,36 @@ function TradingPanel({
       {/* 帳戶資訊 - 底部 */}
       <div className="account-footer">
         <div className="account-item">
+          <span className="label">本金:</span>
+          {editingInitialBalance ? (
+            <input
+              type="number"
+              className="inline-edit-input"
+              value={initialBalanceInput}
+              onChange={(e) => setInitialBalanceInput(e.target.value)}
+              onBlur={() => {
+                const val = parseFloat(initialBalanceInput);
+                if (!isNaN(val) && val > 0) onInitialBalanceChange?.(val);
+                setEditingInitialBalance(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.target.blur();
+                if (e.key === 'Escape') setEditingInitialBalance(false);
+              }}
+              autoFocus
+              style={{ width: '80px' }}
+            />
+          ) : (
+            <span
+              className="value editable-value"
+              title="點擊修改本金"
+              onClick={() => { setInitialBalanceInput(initialBalance.toString()); setEditingInitialBalance(true); }}
+            >
+              ${initialBalance.toFixed(2)}
+            </span>
+          )}
+        </div>
+        <div className="account-item">
           <span className="label">餘額:</span>
           <span className="value">${balance.toFixed(2)}</span>
         </div>
@@ -442,6 +546,12 @@ function TradingPanel({
         <div className="account-item">
           <span className="label">淨值:</span>
           <span className="value">${(balance + totalPnL).toFixed(2)}</span>
+        </div>
+        <div className="account-item">
+          <span className="label">總獲利:</span>
+          <span className={`value ${totalProfit >= 0 ? 'positive' : 'negative'}`}>
+            {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)}
+          </span>
         </div>
         <div className="account-item">
           <span className="label">持倉數:</span>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './Controls.css';
 
 // 時間週期配置
@@ -30,6 +30,11 @@ function Controls({
   startDate = '2025-08-20'
 }) {
   const [selectedDate, setSelectedDate] = useState(startDate);
+
+  // 當外部 startDate prop 改變時（如載入歷史 Session），同步更新
+  useEffect(() => {
+    setSelectedDate(startDate);
+  }, [startDate]);
 
   const handleDateLoad = () => {
     if (selectedDate && onDateChange) {
@@ -121,7 +126,10 @@ function Controls({
           <option value="0.5">0.5x</option>
           <option value="1">1x</option>
           <option value="2">2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
           <option value="5">5x</option>
+          <option value="10">10x</option>
         </select>
       </div>
 
