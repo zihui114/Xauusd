@@ -125,3 +125,27 @@
 .history-table-container::-webkit-scrollbar { width: 4px; }
 .history-table-container::-webkit-scrollbar-track { background: #1e1e1e; }
 .history-table-container::-webkit-scrollbar-thumb { background: #3e3e42; border-radius: 2px; }
+
+/* 每日小計列 */
+.day-summary-row td {
+  background: #1e1e1e;
+  padding: 4px 10px;
+  border-bottom: 1px solid #3e3e42;
+  border-top: 1px solid #3e3e42;
+}
+
+.day-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  margin-right: 10px;
+}
+
+.day-pnl {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-pnl.positive { color: #16c784; }
+.day-pnl.negative { color: #ea3943; }

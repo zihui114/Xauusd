@@ -120,6 +120,19 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     editingRectIdRef.current = editingRectId;
   }, [editingRectId]);
 
+  // 進入/離開矩形編輯模式時，停用/恢復圖表橫向 panning
+  // 必須在 editingRectId 改變時就設定，不能等到拖曳開始才設定
+  // 原因：lightweight-charts 在 pointerdown 時就會 setPointerCapture，
+  // 等到 drag 開始才 applyOptions 已經太晚，pan 已經被 chart 搶走了
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.applyOptions({
+      handleScroll: editingRectId
+        ? { pressedMouseMove: false, horzTouchDrag: false, mouseWheel: true, vertTouchDrag: true }
+        : { pressedMouseMove: true, horzTouchDrag: true, mouseWheel: true, vertTouchDrag: true },
+    });
+  }, [editingRectId]);
+
   useEffect(() => {
     dragModeRef.current = dragMode;
   }, [dragMode]);
@@ -423,16 +436,22 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     const rect = rectanglesRef.current.find(r => r.id === editingRectId);
     if (!rect) return;
 
-    setDragMode(mode);
-    setDragStart({
+    const visibleRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+    const startData = {
       mouseX: e.clientX,
       mouseY: e.clientY,
       rect: { ...rect },
-    });
+      visibleRange,
+    };
 
-    // 添加 document 級別的事件監聽器，確保拖曳時不會丟失事件
-    document.addEventListener('mousemove', handleEditDragMoveDoc);
-    document.addEventListener('mouseup', handleEditDragEndDoc);
+    // 直接更新 ref（不等 useEffect），確保第一個 mousemove 就能讀到正確值
+    dragStartRef.current = startData;
+    dragModeRef.current = mode;
+    editingRectIdRef.current = editingRectId;
+
+    // 用 setDragMode 觸發 re-render → 顯示全螢幕 overlay（取代 document 事件監聽）
+    setDragMode(mode);
+    setDragStart(startData);
   };
 
   // 矩形編輯：拖曳中（document 級別，用像素差值計算價格和時間變化）
@@ -446,6 +465,12 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
 
     if (!currentDragMode || !currentDragStart || !currentEditingRectId) return;
 
+    // 鎖定 viewport：強制恢復拖曳開始時的視角，防止圖表 panning 干擾
+    const timeScale = chartRef.current.timeScale();
+    if (currentDragStart.visibleRange) {
+      timeScale.setVisibleLogicalRange(currentDragStart.visibleRange);
+    }
+
     const deltaX = e.clientX - currentDragStart.mouseX;
     const deltaY = e.clientY - currentDragStart.mouseY;
 
@@ -456,9 +481,8 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     if (currentPrice === null || newPrice === null) return;
     const deltaPrice = newPrice - currentPrice;
 
-    // 計算時間變化（X軸）
-    const timeScale = chartRef.current.timeScale();
-    const visibleRange = timeScale.getVisibleLogicalRange();
+    // 計算時間變化（X軸，用拖曳開始時的 visibleRange 保持穩定）
+    const visibleRange = currentDragStart.visibleRange;
     if (!visibleRange) return;
     const chartWidth = chartContainerRef.current?.clientWidth || 800;
     const pixelsPerBar = chartWidth / (visibleRange.to - visibleRange.from);
@@ -506,10 +530,10 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
     }));
   };
 
-  // 矩形編輯：結束拖曳（document 級別）
+  // 矩形編輯：結束拖曳
   const handleEditDragEndDoc = () => {
-    document.removeEventListener('mousemove', handleEditDragMoveDoc);
-    document.removeEventListener('mouseup', handleEditDragEndDoc);
+    dragStartRef.current = null;
+    dragModeRef.current = null;
     setDragMode(null);
     setDragStart(null);
   };
@@ -1656,8 +1680,8 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
               style={{
                 position: 'absolute',
                 left: 0,
+                right: 70, // 不蓋到右側價格軸（約 65-70px 寬）
                 top: hp.y - 6,
-                width: '100%',
                 height: 12,
                 cursor: 'ns-resize',
                 zIndex: 10,
@@ -1736,6 +1760,29 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
           />
         )}
       </div>
+
+      {/* 矩形拖曳時的全螢幕捕獲層 */}
+      {dragMode !== null && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0,
+            width: '100vw', height: '100vh',
+            zIndex: 99999,
+            cursor: dragMode === 'move' ? 'move' : 'nwse-resize',
+          }}
+          onMouseMove={(e) => {
+            // stopPropagation 停止 native event bubble 到 <html>
+            // 防止 lightweight-charts 在 html 上的 mousemove listener 觸發 panning
+            e.nativeEvent.stopPropagation();
+            handleEditDragMoveDoc(e);
+          }}
+          onMouseUp={(e) => {
+            e.nativeEvent.stopPropagation();
+            handleEditDragEndDoc();
+          }}
+        />
+      )}
     </div>
   );
 }

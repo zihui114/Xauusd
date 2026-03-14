@@ -162,7 +162,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                       <span className="negative">{stats.loseTrades} 敗</span>
                       <span className="session-meta-line">
                         本金 ${selectedSession.initial_balance?.toFixed(0)}
-                        {selectedSession.final_balance && ` · 最終 $${selectedSession.final_balance.toFixed(0)}`}
+                        {selectedSession.initial_balance != null && ` · 最終 $${(selectedSession.initial_balance + stats.totalPnL).toFixed(0)}`}
                       </span>
                     </div>
                   );
@@ -175,6 +175,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                     <table>
                       <thead>
                         <tr>
+                          <th>日期</th>
                           <th>類型</th>
                           <th>手數</th>
                           <th>進場</th>
@@ -183,8 +184,16 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {sessionTrades.map(trade => (
+                        {sessionTrades.map(trade => {
+                          const dateStr = trade.close_time
+                            ? (() => {
+                                const d = new Date(trade.close_time);
+                                return `${d.getMonth() + 1}/${d.getDate()}`;
+                              })()
+                            : '-';
+                          return (
                           <tr key={trade.id}>
+                            <td className="trade-date">{dateStr}</td>
                             <td className={trade.trade_type}>{trade.trade_type?.toUpperCase()}</td>
                             <td>{trade.lot_size}</td>
                             <td>{trade.entry_price?.toFixed(2)}</td>
@@ -193,7 +202,8 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                               {trade.pnl != null ? (trade.pnl >= 0 ? '+' : '') + trade.pnl.toFixed(2) : '-'}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
