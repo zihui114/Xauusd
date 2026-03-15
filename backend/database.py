@@ -1,102 +1,229 @@
-from flask_sqlalchemy import SQLAlchemy
+from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+from bson import ObjectId
 
-db = SQLAlchemy()
+# MongoDB 連線 - 請將 <db_password> 替換成你的密碼
+MONGODB_URI = "mongodb+srv://zzkk:akira@cluster0.2obocxv.mongodb.net/?appName=Cluster0"
 
-class User(db.Model):
-    __tablename__ = 'users'
+# 連接 MongoDB
+client = MongoClient(MONGODB_URI)
+db = client.xauusd  # 資料庫名稱
 
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+# 集合（相當於 SQL 的表）
+users = db.users
+sessions = db.replay_sessions
+trades = db.trades
 
-    # 關聯
-    sessions = db.relationship('ReplaySession', backref='user', lazy=True)
-    trades = db.relationship('Trade', backref='user', lazy=True)
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+class User:
+    """用戶模型"""
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+    @staticmethod
+    def create(username, password):
+        """創建新用戶"""
+        user = {
+            'username': username,
+            'password_hash': generate_password_hash(password),
+            'created_at': datetime.utcnow()
+        }
+        result = users.insert_one(user)
+        user['_id'] = result.inserted_id
+        return user
 
-    def to_dict(self):
+    @staticmethod
+    def find_by_username(username):
+        """通過用戶名查找用戶"""
+        return users.find_one({'username': username})
+
+    @staticmethod
+    def find_by_id(user_id):
+        """通過 ID 查找用戶"""
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+        return users.find_one({'_id': user_id})
+
+    @staticmethod
+    def check_password(user, password):
+        """驗證密碼"""
+        return check_password_hash(user['password_hash'], password)
+
+    @staticmethod
+    def to_dict(user):
+        """轉換為字典格式"""
+        if not user:
+            return None
         return {
-            'id': self.id,
-            'username': self.username,
-            'created_at': self.created_at.isoformat()
+            'id': str(user['_id']),
+            'username': user['username'],
+            'created_at': user['created_at'].isoformat()
         }
 
 
-class ReplaySession(db.Model):
-    """復盤記錄"""
-    __tablename__ = 'replay_sessions'
+class ReplaySession:
+    """復盤記錄模型"""
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    name = db.Column(db.String(200), nullable=True)  # 復盤名稱
-    start_date = db.Column(db.String(20), nullable=False)  # 開始日期
-    timeframe = db.Column(db.String(10), nullable=False)  # 時間週期
-    initial_balance = db.Column(db.Float, default=10000)
-    final_balance = db.Column(db.Float, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    @staticmethod
+    def create(user_id, name, start_date, timeframe, initial_balance):
+        """創建新復盤記錄"""
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
 
-    # 關聯
-    trades = db.relationship('Trade', backref='session', lazy=True)
+        session = {
+            'user_id': user_id,
+            'name': name,
+            'start_date': start_date,
+            'timeframe': timeframe,
+            'initial_balance': initial_balance,
+            'final_balance': None,
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        result = sessions.insert_one(session)
+        session['_id'] = result.inserted_id
+        return session
 
-    def to_dict(self):
+    @staticmethod
+    def find_by_user(user_id):
+        """查找用戶的所有復盤記錄"""
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+        return list(sessions.find({'user_id': user_id}).sort('updated_at', -1))
+
+    @staticmethod
+    def find_by_id(session_id, user_id=None):
+        """查找單個復盤記錄"""
+        if isinstance(session_id, str):
+            session_id = ObjectId(session_id)
+        if user_id and isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+
+        query = {'_id': session_id}
+        if user_id:
+            query['user_id'] = user_id
+        return sessions.find_one(query)
+
+    @staticmethod
+    def update(session_id, user_id, updates):
+        """更新復盤記錄"""
+        if isinstance(session_id, str):
+            session_id = ObjectId(session_id)
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+
+        updates['updated_at'] = datetime.utcnow()
+        sessions.update_one(
+            {'_id': session_id, 'user_id': user_id},
+            {'$set': updates}
+        )
+        return ReplaySession.find_by_id(session_id, user_id)
+
+    @staticmethod
+    def delete(session_id, user_id):
+        """刪除復盤記錄"""
+        if isinstance(session_id, str):
+            session_id = ObjectId(session_id)
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+
+        # 先刪除相關交易記錄
+        trades.delete_many({'session_id': session_id})
+        # 再刪除復盤記錄
+        sessions.delete_one({'_id': session_id, 'user_id': user_id})
+
+    @staticmethod
+    def to_dict(session):
+        """轉換為字典格式"""
+        if not session:
+            return None
+
+        # 計算交易數量
+        trade_count = trades.count_documents({'session_id': session['_id']})
+
         return {
-            'id': self.id,
-            'name': self.name,
-            'start_date': self.start_date,
-            'timeframe': self.timeframe,
-            'initial_balance': self.initial_balance,
-            'final_balance': self.final_balance,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'trade_count': len(self.trades)
+            'id': str(session['_id']),
+            'name': session['name'],
+            'start_date': session['start_date'],
+            'timeframe': session['timeframe'],
+            'initial_balance': session['initial_balance'],
+            'final_balance': session.get('final_balance'),
+            'created_at': session['created_at'].isoformat(),
+            'updated_at': session['updated_at'].isoformat(),
+            'trade_count': trade_count
         }
 
 
-class Trade(db.Model):
-    """交易記錄"""
-    __tablename__ = 'trades'
+class Trade:
+    """交易記錄模型"""
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    session_id = db.Column(db.Integer, db.ForeignKey('replay_sessions.id'), nullable=True)
+    @staticmethod
+    def create(user_id, session_id, trade_data):
+        """創建新交易記錄"""
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+        if session_id and isinstance(session_id, str):
+            session_id = ObjectId(session_id)
 
-    trade_type = db.Column(db.String(10), nullable=False)  # 'buy' or 'sell'
-    lot_size = db.Column(db.Float, nullable=False)
-    entry_price = db.Column(db.Float, nullable=False)
-    close_price = db.Column(db.Float, nullable=True)
-    stop_loss = db.Column(db.Float, nullable=True)
-    take_profit = db.Column(db.Float, nullable=True)
-    pnl = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), nullable=False)  # 'open', 'closed', 'cancelled'
-    close_reason = db.Column(db.String(50), nullable=True)  # '止損', '止盈', '手動平倉'
+        trade = {
+            'user_id': user_id,
+            'session_id': session_id,
+            'trade_type': trade_data.get('trade_type'),
+            'lot_size': trade_data.get('lot_size'),
+            'entry_price': trade_data.get('entry_price'),
+            'close_price': trade_data.get('close_price'),
+            'stop_loss': trade_data.get('stop_loss'),
+            'take_profit': trade_data.get('take_profit'),
+            'pnl': trade_data.get('pnl'),
+            'status': trade_data.get('status', 'open'),
+            'close_reason': trade_data.get('close_reason'),
+            'open_time': trade_data.get('open_time'),
+            'close_time': trade_data.get('close_time'),
+            'created_at': datetime.utcnow()
+        }
+        result = trades.insert_one(trade)
+        trade['_id'] = result.inserted_id
+        return trade
 
-    open_time = db.Column(db.DateTime, nullable=True)
-    close_time = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    @staticmethod
+    def find_by_user(user_id, session_id=None):
+        """查找用戶的交易記錄"""
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
 
-    def to_dict(self):
+        query = {'user_id': user_id}
+        if session_id:
+            if isinstance(session_id, str):
+                session_id = ObjectId(session_id)
+            query['session_id'] = session_id
+
+        return list(trades.find(query).sort('created_at', -1))
+
+    @staticmethod
+    def find_by_session(session_id):
+        """查找復盤記錄的所有交易"""
+        if isinstance(session_id, str):
+            session_id = ObjectId(session_id)
+        return list(trades.find({'session_id': session_id}).sort('created_at', -1))
+
+    @staticmethod
+    def to_dict(trade):
+        """轉換為字典格式"""
+        if not trade:
+            return None
+
         return {
-            'id': self.id,
-            'session_id': self.session_id,
-            'trade_type': self.trade_type,
-            'lot_size': self.lot_size,
-            'entry_price': self.entry_price,
-            'close_price': self.close_price,
-            'stop_loss': self.stop_loss,
-            'take_profit': self.take_profit,
-            'pnl': self.pnl,
-            'status': self.status,
-            'close_reason': self.close_reason,
-            'open_time': self.open_time.isoformat() if self.open_time else None,
-            'close_time': self.close_time.isoformat() if self.close_time else None,
-            'created_at': self.created_at.isoformat()
+            'id': str(trade['_id']),
+            'session_id': str(trade['session_id']) if trade.get('session_id') else None,
+            'trade_type': trade.get('trade_type'),
+            'lot_size': trade.get('lot_size'),
+            'entry_price': trade.get('entry_price'),
+            'close_price': trade.get('close_price'),
+            'stop_loss': trade.get('stop_loss'),
+            'take_profit': trade.get('take_profit'),
+            'pnl': trade.get('pnl'),
+            'status': trade.get('status'),
+            'close_reason': trade.get('close_reason'),
+            'open_time': trade.get('open_time'),
+            'close_time': trade.get('close_time'),
+            'created_at': trade['created_at'].isoformat()
         }
