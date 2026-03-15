@@ -605,7 +605,6 @@ if (isReversalCandle(highestCandle, 'bearish')) {
     setBalance(initialBalance);
     setCurrentSessionId(null);
     currentSessionIdRef.current = null;
-    setActiveSessionName(null);
     prevTradeHistoryLengthRef.current = 0;
     await loadMinuteData(date);
   };
@@ -781,7 +780,6 @@ if (isReversalCandle(highestCandle, 'bearish')) {
           onSpeedChange={setSpeed}
           onDateChange={handleDateChange}
           onTimeframeChange={setTimeframe}
-          hasOpenPositions={positions.some(p => p.status === 'open' || p.status === 'pending')}
           canStepForward={minuteIndex < minuteData.length - 1}
           canStepBackward={minuteIndex > 0}
           speed={speed}

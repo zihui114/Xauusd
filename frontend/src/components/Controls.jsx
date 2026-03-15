@@ -27,8 +27,7 @@ function Controls({
   timeframe,
   simulationMode,
   onSimulationModeChange,
-  startDate = '2025-08-20',
-  hasOpenPositions = false,
+  startDate = '2025-08-20'
 }) {
   const [selectedDate, setSelectedDate] = useState(startDate);
 
@@ -38,9 +37,9 @@ function Controls({
   }, [startDate]);
 
   const handleDateLoad = () => {
-    if (!selectedDate || !onDateChange) return;
-    if (hasOpenPositions && !window.confirm('目前有未平倉的持倉，載入新日期會將其全部平倉，確定繼續？')) return;
-    onDateChange(selectedDate);
+    if (selectedDate && onDateChange) {
+      onDateChange(selectedDate);
+    }
   };
 
   return (
