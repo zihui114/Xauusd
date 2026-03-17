@@ -897,7 +897,7 @@ function Charts({ data, orders, positions = [], visibleBars = 50, timeframe = '1
         height: containerHeight,
         localization: {
           timeFormatter: (timestamp) => {
-            const d = new Date((timestamp + 6 * 3600) * 1000);
+            const d = new Date((timestamp + 0 * 3600) * 1000);
             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
             const dd = String(d.getUTCDate()).padStart(2, '0');
             const hh = String(d.getUTCHours()).padStart(2, '0');

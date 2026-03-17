@@ -162,7 +162,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                       <span className="negative">{stats.loseTrades} 敗</span>
                       <span className="session-meta-line">
                         本金 ${selectedSession.initial_balance?.toFixed(0)}
-                        {selectedSession.final_balance && ` · 最終 $${selectedSession.final_balance.toFixed(0)}`}
+                        {` · 最終 $${(selectedSession.initial_balance + stats.totalPnL).toFixed(0)}`}
                       </span>
                     </div>
                   );
@@ -175,6 +175,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                     <table>
                       <thead>
                         <tr>
+                          <th>日期</th>
                           <th>類型</th>
                           <th>手數</th>
                           <th>進場</th>
@@ -185,6 +186,7 @@ function SessionHistory({ isVisible, onClose, onLoadSession, currentUser }) {
                       <tbody>
                         {sessionTrades.map(trade => (
                           <tr key={trade.id}>
+                            <td className="trade-date">{trade.open_time ? trade.open_time.slice(0, 10) : '-'}</td>
                             <td className={trade.trade_type}>{trade.trade_type?.toUpperCase()}</td>
                             <td>{trade.lot_size}</td>
                             <td>{trade.entry_price?.toFixed(2)}</td>
