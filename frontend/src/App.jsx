@@ -383,6 +383,7 @@ if (isReversalCandle(highestCandle, 'bearish')) {
           pnl: trade.pnl,
           status: trade.status === 'cancelled' ? 'cancelled' : 'closed',
           close_reason: trade.closeReason || null,
+          open_time: trade.openTime || null,
           close_time: trade.closeTime,
         })
       });
@@ -554,6 +555,7 @@ if (isReversalCandle(highestCandle, 'bearish')) {
 
           setTradeHistory(prev => [{
             id: Date.now() + Math.random(),
+            openTime: new Date((pos.triggerTime ?? currentBar.time) * 1000).toISOString(),
             closeTime: new Date(currentBar.time * 1000).toISOString(),
             type: pos.type,
             lotSize: pos.lotSize,
@@ -638,6 +640,7 @@ if (isReversalCandle(highestCandle, 'bearish')) {
 
     setTradeHistory(prev => [{
       id: Date.now(),
+      openTime: new Date((pos.triggerTime ?? currentBar?.time ?? 0) * 1000).toISOString(),
       closeTime: new Date((currentBar?.time ?? 0) * 1000).toISOString(),
       type: pos.type,
       lotSize: closeAmount,
